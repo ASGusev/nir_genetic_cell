@@ -202,6 +202,10 @@ fitness_calculator = FitnessCalculator()
 
 def __main__(argv):
     iterations_number = int(argv[1])
+    plot_filename = argv[2]
+    write_step = int(argv[3])
+    if write_step > 0:
+        raw_filename = argv[4]
     data = read_data()
     r_means, r_stds, target_vector = prepare_data(data)
     generation = [np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_IN_HEIGHT)) * 2.390041077895209e-06 for j in range(GEN_SIZE)]
@@ -217,10 +221,18 @@ def __main__(argv):
         best_fitness = sorted_fitnesses[0]
 
         best_fitnesses.append(best_fitness)
-        plt.plot(np.arange(len(best_fitnesses)), best_fitnesses)
+
+        if j % write_step == 0:
+            with open(raw_filename, 'a') as fout:
+                fout.write('begin step {} \n'.format(j))
+                fout.write('fitness: {}\n'.format(sorted_fitnesses[0]))
+                for line in sorted_generation[0]:
+                    fout.write('\t'.join([' '.join(map(str, column)) for column in line]) + '\n')
+                fout.write('end step\n')
 
         generation = next_generation(sorted_generation[:GEN_SIZE]) + sorted_generation[:GEN_SIZE]
-    plt.show()
+    plt.plot(np.arange(len(best_fitnesses)), best_fitnesses)
+    plt.savefig(plot_filename)
 
 
 if __name__ == '__main__':
