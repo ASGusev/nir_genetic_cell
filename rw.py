@@ -30,7 +30,7 @@ def read_step(fin):
         line = fin.readline()
         if not line.startswith('end'):
             cols = line.split('\t')
-            densities.append(map(lambda col: map(float, cols.split(' ')), cols))
+            densities.append([[float(i) for i in col.split(' ')] for col in cols])
     return step_number, fitness, np.array(densities)
 
 
