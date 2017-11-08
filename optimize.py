@@ -1,10 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy as sp
 from operator import itemgetter
 from multiprocessing import Pool
 import scipy.optimize
 from data_parser import read_data
+import rw
 
 
 type_particle = [('x', float), ('y', float), ('z', float), ('r', float)]
@@ -195,7 +195,7 @@ def prepare_data(data):
     return r_means, r_stds, target_vector
 
 
-def calc(iterations_number, plot_filename, write_step, raw_filename):
+def calc(iterations_number, write_step, raw_filename, print_progress=True):
     fitness_calculator = FitnessCalculator()
     data = read_data()
     r_means, r_stds, target_vector = prepare_data(data)
@@ -203,10 +203,12 @@ def calc(iterations_number, plot_filename, write_step, raw_filename):
     best_fitnesses = []
     fitness_calculator.set_target(target_vector)
     fitness_calculator.set_means(r_means)
-    fitness_calculator.set_stds(r_stds)
+    fitness_calculator.set_stds (r_stds)
+    step_writer = rw.StepWriter(raw_filename)
 
     for j in range(iterations_number):
-        print('Iteration {}'.format(j + 1))
+        if print_progress:
+            print('Iteration {}'.format(j + 1))
         sorted_generation, sorted_fitnesses = sort_with_fitness(generation,
                                                                 fitness_calculator.calculate_fitness)
         best_fitness = sorted_fitnesses[0]
@@ -214,14 +216,8 @@ def calc(iterations_number, plot_filename, write_step, raw_filename):
         best_fitnesses.append(best_fitness)
 
         if j % write_step == 0:
-            with open(raw_filename, 'a') as fout:
-                fout.write('begin step {} \n'.format(j))
-                fout.write('fitness: {}\n'.format(sorted_fitnesses[0]))
-                for line in sorted_generation[0]:
-                    fout.write('\t'.join([' '.join(map(str, column)) for column in line]) + '\n')
-                fout.write('end step\n')
+            step_writer.write_step(j, best_fitnesses[0], sorted_generation[0])
 
         generation = next_generation(sorted_generation[:GEN_SIZE]) + \
                      sorted_generation[:GEN_SIZE]
-    plt.plot(np.arange(len(best_fitnesses)), best_fitnesses)
-    plt.savefig(plot_filename)
+    return np.array(best_fitnesses)
