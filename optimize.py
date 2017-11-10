@@ -5,7 +5,6 @@ from multiprocessing import Pool
 import scipy.optimize
 from data_parser import read_data
 import rw
-import time
 
 
 type_particle = [('x', float), ('y', float), ('z', float), ('r', float)]
@@ -21,7 +20,10 @@ PART_CNT = 500
 kB = 1.38e-23
 T = 293
 SIZES = [0, 7 * 0.05 * 1e-6, 11 * 0.05 * 1e-6, float('inf')]
-GEN_SIZE = 10
+GEN_SIZE = 200
+REPLACED_SHARE = 0.2
+TO_REPLACE = int(GEN_SIZE * REPLACED_SHARE + EPS)
+TO_KEEP = GEN_SIZE - TO_REPLACE
 BOXES_ALONG = 50
 BOX_SIDE = 2 * R / BOXES_ALONG
 COORD_MULT = 1 / BOX_SIDE
@@ -74,7 +76,7 @@ def generate_particles(number, min_r, max_r):
     return particles
 
 
-def cross_boxes(father, mother):
+def cross(father, mother):
     from_father = np.random.choice((False, True), (BOXES_ALONG, BOXES_ALONG, BOXES_IN_HEIGHT))
     from_mother = np.logical_not(from_father)
     child = np.zeros((BOXES_ALONG, BOXES_ALONG, BOXES_IN_HEIGHT))
@@ -189,7 +191,12 @@ class FitnessCalculator:
 
 
 def next_generation(generation):
-    return [cross_boxes(j, k) for j in generation for k in generation]
+    children = []
+    for father, mother in zip(generation[:TO_REPLACE:2],
+                              generation[1:TO_REPLACE:2]):
+        children.append(cross(father, mother))
+        children.append(cross(father, mother))
+    return generation[:TO_KEEP] + children
 
 
 def prepare_data(data):
@@ -220,7 +227,6 @@ def calc(iterations_number, write_step, raw_filename, print_progress=True):
     fitness_calculator.set_stds (r_stds)
     step_writer = rw.StepWriter(raw_filename)
 
-    t = time.time()
     for j in range(iterations_number):
         if print_progress:
             print('Iteration {}'.format(j + 1))
@@ -230,10 +236,8 @@ def calc(iterations_number, write_step, raw_filename, print_progress=True):
 
         best_fitnesses.append(best_fitness)
 
-        if j % write_step == 0:
+        if (j + 1) % write_step == 0:
             step_writer.write_step(j, best_fitnesses[0], sorted_generation[0])
 
-        generation = next_generation(sorted_generation[:GEN_SIZE]) + \
-                     sorted_generation[:GEN_SIZE]
-    print('{} sec'.format(time.time() - t))
+        generation = next_generation(sorted_generation[:GEN_SIZE])
     return np.array(best_fitnesses)
