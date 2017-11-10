@@ -5,11 +5,13 @@ from multiprocessing import Pool
 import scipy.optimize
 from data_parser import read_data
 import rw
+import time
 
 
 type_particle = [('x', float), ('y', float), ('z', float), ('r', float)]
 
 
+EPS = 1e-12
 TRACK_SIZE = 50
 R = 10 * 1e-6
 H = 1.5 * 1e-5
@@ -22,10 +24,9 @@ SIZES = [0, 7 * 0.05 * 1e-6, 11 * 0.05 * 1e-6, float('inf')]
 GEN_SIZE = 10
 BOXES_ALONG = 50
 BOX_SIDE = 2 * R / BOXES_ALONG
-BOXES_IN_HEIGHT = int(H / BOX_SIDE)
-BOX_BORDERS_H = np.linspace(-R, R, BOXES_ALONG + 1)
-BOX_BORDERS_V = np.linspace(0, H,  + 1)
-EPS = 1e-12
+COORD_MULT = 1 / BOX_SIDE
+BOXES_IN_HEIGHT = int(H / BOX_SIDE + 1 - EPS)
+R_SQR = R ** 2
 
 
 def calc_dist(t_vector, r_vector):
@@ -54,12 +55,12 @@ def std_to_curve_params(xs, ys, popt=[1, 1]):
 
 
 def sort_with_fitness(generation, fitness_function):
-    with Pool(5) as pool:
+    with Pool() as pool:
         fitnesses = pool.map(fitness_function, generation)
     sorted_zipped = sorted(zip(fitnesses, generation), key=itemgetter(0))
     sorted_beings = [being for (fitness, being) in sorted_zipped]
-    sorted_fitnessess = [fitness for (fitness, being) in sorted_zipped]
-    return sorted_beings, sorted_fitnessess
+    sorted_fitnesses = [fitness for (fitness, being) in sorted_zipped]
+    return sorted_beings, sorted_fitnesses
 
 
 def generate_particles(number, min_r, max_r):
@@ -83,63 +84,76 @@ def cross_boxes(father, mother):
     return child
 
 
+def refute_sides(parts, shifts, bad):
+    while np.count_nonzero(bad) > 0:
+        bad_parts = parts[bad]
+        bad_shifts = shifts[bad]
+        a = bad_shifts[:, 0] ** 2 + bad_shifts[:, 1] ** 2
+        b = 2 * (bad_shifts[:, 0] * bad_parts['x'] + bad_shifts[:, 1] * bad_parts['y'])
+        c = bad_parts['x'] ** 2 + bad_parts['y'] ** 2 - R ** 2
+        k = (-b + np.sqrt((b ** 2 - 4 * c * a))) / (2 * a)
+        parts['x'][bad] += k * bad_shifts[:, 0]
+        parts['y'][bad] += k * bad_shifts[:, 1]
+        shifts[bad, 0] *= (1 - k)
+        shifts[bad, 1] *= (1 - k)
+
+        proj = parts[bad]
+        shabs = bad_shifts[:, 0] * proj['x'] + bad_shifts[:, 1] * proj['y']
+        shifts[bad, 0] -= 2 * shabs * proj['x'] / R_SQR
+        shifts[bad, 1] -= 2 * shabs * proj['y'] / R_SQR
+        good = (parts['x'] + shifts[:, 0]) ** 2 + (parts['y'] + shifts[:, 1]) ** 2 <= R ** 2
+        parts['x'][good] += shifts[good, 0]
+        parts['y'][good] += shifts[good, 1]
+        shifts[good] = 0
+        bad = np.logical_not(good)
+    parts['x'][bad] += shifts[bad, 0]
+    parts['y'][bad] += shifts[bad, 1]
+
+
+def refute_bases(parts):
+    too_high = parts['z'] > H
+    too_low = parts['z'] < 0
+    while np.count_nonzero(too_high) or np.count_nonzero(too_low):
+        parts['z'][too_high] = 2 * H - parts[too_high]['z']
+        parts['z'][too_low] = -parts[too_low]['z']
+        too_low = parts['z'] < 0
+        too_high = parts['z'] > H
+
+
 def drive_particles(viscs, steps, min_r, max_r):
     parts = generate_particles(PART_CNT, min_r, max_r)
     tracks = np.zeros([PART_CNT, steps, 3])
     pre_coeffs = kB * T / (3 * np.pi * viscs)
     for j in range(steps):
-        tracks[:, j, 0] = parts['x']
-        tracks[:, j, 1] = parts['y']
-        tracks[:, j, 2] = parts['z']
-        box_xes = np.searchsorted(BOX_BORDERS_H, parts['x'] + EPS) - 1
-        box_ys = np.searchsorted(BOX_BORDERS_H, parts['y'] + EPS) - 1
-        box_zs = np.searchsorted(BOX_BORDERS_V, parts['z'] + EPS) - 1
+        extend_tracks(j, parts, tracks)
+
+        box_xes = np.int32((R + parts['x']) * COORD_MULT)
+        box_ys = np.int32((R + parts['y']) * COORD_MULT)
+        box_zs = np.int32(parts['z'] * COORD_MULT)
+
         coeffs = pre_coeffs[box_xes, box_ys, box_zs] / parts['r']
 
-        shifts = np.random.normal(0, np.sqrt(2 * coeffs * DELTA_T), (3, len(parts))).T
+        shifts = calc_shifts(coeffs, parts)
         bad = (parts['x'] + shifts[:, 0]) ** 2 + (parts['y'] + shifts[:, 1]) ** 2 > R ** 2
         parts['x'][~bad] += shifts[~bad, 0]
         parts['y'][~bad] += shifts[~bad, 1]
         parts['z'] += shifts[:, 2]
         shifts[~bad] = 0
-        shifts[:, 2] = 0
+        shifts[bad, 2] = 0
 
-#       Refuting from sides
-        while np.count_nonzero(bad) > 0:
-            a = shifts[bad, 0] ** 2 + shifts[bad, 1] ** 2
-            b = 2 * (shifts[bad, 0] * parts['x'][bad] + shifts[bad, 1] * parts['y'][bad])
-            c = parts['x'][bad] ** 2 + parts['y'][bad] ** 2 - R ** 2
-            k = (-b + np.sqrt(np.abs(b ** 2 - 4 * c * a))) / (2 * a)
-            parts['x'][bad] += k * shifts[bad, 0]
-            parts['y'][bad] += k * shifts[bad, 1]
-            shifts[bad, 0] *= (1 - k)
-            shifts[bad, 1] *= (1 - k)
-            proj = np.copy(parts[bad])
-            fpabs = np.sqrt(parts['x'][bad] ** 2 + parts['y'][bad] ** 2)
-            proj['x'] /= fpabs
-            proj['y'] /= fpabs
-            shabs = shifts[bad, 0] * proj['x'] + shifts[bad, 1] * proj['y']
-            proj['x'] *= shabs
-            proj['y'] *= shabs
-            shifts[bad, 0] -= 2 * proj['x']
-            shifts[bad, 1] -= 2 * proj['y']
-            good = (parts['x'] + shifts[:, 0]) ** 2 + (parts['y'] + shifts[:, 1]) ** 2 <= R ** 2
-            parts['x'][good] += shifts[good, 0]
-            parts['y'][good] += shifts[good, 1]
-            shifts[good] = 0
-            bad = (parts['x'] + shifts[:, 0]) ** 2 + (parts['y'] + shifts[:, 1]) ** 2 > R ** 2
-        parts['x'][bad] += shifts[bad, 0]
-        parts['y'][bad] += shifts[bad, 1]
-
-#       Refuting from floor and ceil
-        too_high = parts['z'] > H
-        too_low = parts['z'] < 0
-        while np.count_nonzero(too_high) or np.count_nonzero(too_low):
-            parts['z'][too_high] = 2 * H - parts[too_high]['z']
-            parts['z'][too_low] = -parts[too_low]['z']
-            too_low = parts['z'] < 0
-            too_high = parts['z'] > H
+        refute_sides(parts, shifts, bad)
+        refute_bases(parts)
     return tracks
+
+
+def extend_tracks(j, parts, tracks):
+    tracks[:, j, 0] = parts['x']
+    tracks[:, j, 1] = parts['y']
+    tracks[:, j, 2] = parts['z']
+
+
+def calc_shifts(coeffs, parts):
+    return np.random.normal(0, np.sqrt(2 * coeffs * DELTA_T), (3, len(parts))).T
 
 
 def calculate_parameters(viscs, r_means, r_stds):
@@ -206,6 +220,7 @@ def calc(iterations_number, write_step, raw_filename, print_progress=True):
     fitness_calculator.set_stds (r_stds)
     step_writer = rw.StepWriter(raw_filename)
 
+    t = time.time()
     for j in range(iterations_number):
         if print_progress:
             print('Iteration {}'.format(j + 1))
@@ -220,4 +235,5 @@ def calc(iterations_number, write_step, raw_filename, print_progress=True):
 
         generation = next_generation(sorted_generation[:GEN_SIZE]) + \
                      sorted_generation[:GEN_SIZE]
+    print('{} sec'.format(time.time() - t))
     return np.array(best_fitnesses)
