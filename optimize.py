@@ -122,9 +122,9 @@ def refute_bases(parts):
         too_high = parts['z'] > H
 
 
-def drive_particles(viscs, steps, min_r, max_r):
-    parts = generate_particles(PART_CNT, min_r, max_r)
-    tracks = np.zeros([PART_CNT, steps, 3])
+def drive_particles(viscs, steps, min_r, max_r, particles_number):
+    parts = generate_particles(particles_number, min_r, max_r)
+    tracks = np.zeros([particles_number, steps, 3])
     pre_coeffs = kB * T / (3 * np.pi * viscs)
     for j in range(steps):
         extend_tracks(j, parts, tracks)
@@ -158,12 +158,15 @@ def calc_shifts(coeffs, parts):
     return np.random.normal(0, np.sqrt(2 * coeffs * DELTA_T), (3, len(parts))).T
 
 
-def calculate_parameters(viscs, r_means, r_stds):
+def calculate_parameters(viscs, r_means, r_stds, repeats):
     parameters = []
     for r_mean, r_std in zip(r_means, r_stds):
-        tracks = drive_particles(viscs, TRACK_SIZE, r_mean - r_std, r_mean + r_std)
-        parameters.append(std_to_curve_params(*large_data_std_values(tracks)))
-    return np.array(parameters)
+        tracks = drive_particles(viscs, TRACK_SIZE, r_mean - r_std, r_mean + r_std, PART_CNT * repeats)
+        parameters.append([std_to_curve_params(*large_data_std_values(tracks[i * PART_CNT: (i + 1) * PART_CNT]))
+                           for i in range(repeats)])
+    parameters = np.array(parameters)
+    parameters = parameters.mean(axis=1)
+    return parameters
 
 
 class FitnessCalculator:
@@ -182,10 +185,7 @@ class FitnessCalculator:
         self.stds = stds
 
     def calculate_fitness(self, viscs):
-        result_params = np.zeros((len(SIZES) - 1, 2), dtype=float)
-        for j in range(F_CNT):
-            result_params += calculate_parameters(viscs, self.means, self.stds)
-        result_params /= F_CNT
+        result_params = calculate_parameters(viscs, self.means, self.stds, F_CNT)
         result = calc_dist(self.target, result_params)
         return result
 
