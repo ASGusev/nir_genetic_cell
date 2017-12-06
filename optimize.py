@@ -15,8 +15,7 @@ TRACK_SIZE = 50
 R = 10 * 1e-6
 H = 1.5 * 1e-5
 DELTA_T = 1.8 * 1e-6
-F_CNT = 10
-PART_CNT = 500
+PART_CNT = 5000
 kB = 1.38e-23
 T = 293
 SIZES = [0, 7 * 0.05 * 1e-6, 11 * 0.05 * 1e-6, float('inf')]
@@ -158,15 +157,12 @@ def calc_shifts(coeffs, parts):
     return np.random.normal(0, np.sqrt(2 * coeffs * DELTA_T), (3, len(parts))).T
 
 
-def calculate_parameters(viscs, r_means, r_stds, repeats):
+def calculate_parameters(viscs, r_means, r_stds):
     parameters = []
     for r_mean, r_std in zip(r_means, r_stds):
-        tracks = drive_particles(viscs, TRACK_SIZE, r_mean - r_std, r_mean + r_std, PART_CNT * repeats)
-        parameters.append([std_to_curve_params(*large_data_std_values(tracks[i * PART_CNT: (i + 1) * PART_CNT]))
-                           for i in range(repeats)])
-    parameters = np.array(parameters)
-    parameters = parameters.mean(axis=1)
-    return parameters
+        tracks = drive_particles(viscs, TRACK_SIZE, r_mean - r_std, r_mean + r_std, PART_CNT)
+        parameters.append(std_to_curve_params(*large_data_std_values(tracks)))
+    return np.array(parameters)
 
 
 class FitnessCalculator:
@@ -185,7 +181,7 @@ class FitnessCalculator:
         self.stds = stds
 
     def calculate_fitness(self, viscs):
-        result_params = calculate_parameters(viscs, self.means, self.stds, F_CNT)
+        result_params = calculate_parameters(viscs, self.means, self.stds)
         result = calc_dist(self.target, result_params)
         return result
 
@@ -237,7 +233,7 @@ def calc(iterations_number, write_step, raw_filename, print_progress=True):
         best_fitnesses.append(best_fitness)
 
         if (j + 1) % write_step == 0:
-            step_writer.write_step(j, best_fitnesses[0], sorted_generation[0])
+            step_writer.write_step(j + 1, best_fitnesses[0], sorted_generation[0])
 
         generation = next_generation(sorted_generation[:GEN_SIZE])
     return np.array(best_fitnesses)
