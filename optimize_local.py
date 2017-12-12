@@ -12,7 +12,7 @@ type_particle = [('x', float), ('y', float), ('z', float)]
 EPS = 1e-12
 TRACK_SIZE = 50
 MAX_DIST = 7 * 1e-7
-DELTA_T = 1.8 * 1e-6
+DELTA_T = 1.8 * 1e-6#1.89 sec
 PART_CNT = 100
 kB = 1.38e-23
 T = 293
@@ -20,7 +20,7 @@ GEN_SIZE = 100
 REPLACED_SHARE = 0.2
 TO_REPLACE = int(GEN_SIZE * REPLACED_SHARE + EPS)
 TO_KEEP = GEN_SIZE - TO_REPLACE
-BOXES_ALONG = 20
+BOXES_ALONG = 12
 BOX_SIDE = 2 * MAX_DIST / BOXES_ALONG
 COORD_MULT = 1 / BOX_SIDE
 
@@ -83,20 +83,26 @@ def calc_shifts(coeffs, n):
 
 class FitnessCalculator:
     def __init__(self, data):
-        self.rads = data[0]
-        self.lengths = data[1]
-
-    def diff(self, lengths):
-        return abs(math.log(np.mean(np.array(lengths) / self.lengths)))
+        horizontal_lengths = []
+        rads = []
+        for t in data:
+            steps = t[1:, 1:] - t[:-1, 1:]
+            horizontal_lengths.append(np.sum(np.sqrt(np.sum(steps ** 2, axis=1))))
+            rads.append(t[0, 0])
+        self.lengths = np.array(horizontal_lengths)
+        self.rads = np.array(rads)
 
     def calculate_fitness(self, viscs):
-        exp_lengths = []
+        fitnesses = []
         for rad, length in zip(self.rads, self.lengths):
             tracks, shifts = drive_particles(viscs, TRACK_SIZE, rad, PART_CNT)
             shifts_hor_lengths = np.sqrt(np.sum((shifts ** 2)[:, :, :-1], axis=2))
             track_lengths = np.sum(shifts_hor_lengths, axis=1)
-            exp_lengths.append(track_lengths.mean())
-        return self.diff(np.array(exp_lengths))
+            fitnesses.append(track_lengths.mean())
+            length_ratios = track_lengths / length
+            exp_fitnesses = (length_ratios - 1) ** 2
+            fitnesses.append(exp_fitnesses.mean())
+        return np.array(fitnesses).mean()
 
 
 def next_generation(generation):
@@ -108,21 +114,9 @@ def next_generation(generation):
     return generation[:TO_KEEP] + children
 
 
-def prepare_data(data):
-    horizontal_lengths = []
-    rads = []
-    for t in data:
-        steps = t[1:, 1:] - t[:-1, 1:]
-        horizontal_lengths.append(np.sum(np.sqrt(np.sum(steps ** 2, axis=1))))
-        rads.append(t[0, 0])
-    horizontal_lengths = np.array(horizontal_lengths)
-    rads = np.array(rads)
-    return np.vstack([rads, horizontal_lengths])
-
-
 def calc(iterations_number, write_step, raw_filename, show_progress=True):
     data = read_data()
-    fitness_calculator = FitnessCalculator(prepare_data(data))
+    fitness_calculator = FitnessCalculator(data)
     generation = [np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG)) * 2.390041077895209e-06 for j in range(GEN_SIZE)]
     best_fitnesses = []
     step_writer = rw.StepWriter(raw_filename)
