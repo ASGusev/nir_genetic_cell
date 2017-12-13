@@ -120,8 +120,3 @@ def convert_to_normal_coords(track):
 def read_data():
     data = parse_arsnoc() + parse_new_tracks()
     return list(map(convert_to_normal_coords, map(convert_area_to_radius, data)))
-
-
-if __name__ == "__main__":
-    data = read_data()
-    print(data[0])
