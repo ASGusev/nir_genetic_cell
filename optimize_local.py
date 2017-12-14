@@ -74,23 +74,19 @@ def prepare_avg_lengths(data):
     return horizontal_lengths, rads, step_numbers
 
 
+def target_f(x, a, b):
+    return b * x ** a
+
+
 def track_to_params(track):
     time_disps = []
-    for i in range(1, len(track)):
-        displacements = np.sum((track[i:] - track[:-i]) ** 2, axis=1) ** 0.5
+    times = np.arange(1, len(track))
+    for i in times:
+        displacements = np.linalg.norm(track[i:] - track[:-i], axis=1)
         time_disps.append(displacements.mean())
     time_disps = np.array(time_disps)
-    times = np.arange(1, len(track))
-
-    def f(x, a, b):
-        return b * x ** a
-
-    c, _ = soptimize.curve_fit(f, times, time_disps, [1e1, 1e-9])
+    c, _ = soptimize.curve_fit(target_f, times, time_disps, [1e1, 1e-9])
     return c
-
-
-def prepare_disp_params(data):
-    return [track_to_params(t[:, 1:]) for t in data]
 
 
 def calc_length_fitness(shifts, length):
@@ -102,14 +98,20 @@ def calc_length_fitness(shifts, length):
 
 
 def calc_param_fitness(tracks, disp_params):
-    p1, p2 = [], []
-    for t in tracks:
-        params = track_to_params(t[:, :2])
-        p1.append(params[0])
-        p2.append(params[1])
-    p1 = np.abs(np.array(p1) / disp_params[0] - 1)
-    p2 = np.abs(np.array(p2) / disp_params[1] - 1)
-    return p1.mean(), p2.mean()
+    time_disps = []
+    times = np.arange(1, tracks.shape[1])
+    for i in times:
+        displacements = np.linalg.norm(tracks[:, i:, :] - tracks[:, :-i, :], axis=2)
+        time_disps.append(displacements.mean())
+    time_disps = np.array(time_disps)
+    (p1, p2), _ = soptimize.curve_fit(target_f, times, time_disps, [1e1, 1e-9])
+    p1 = abs(p1 / disp_params[0] - 1)
+    p2 = abs(p2 / disp_params[1] - 1)
+    return p1, p2
+
+
+def prepare_disp_params(data):
+    return [track_to_params(t[:, 1:]) for t in data]
 
 
 class FitnessCalculator:
@@ -196,5 +198,5 @@ def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
         generation = generation[:TO_KEEP] + children(generation,
                                                      fitness_calculator.calculate_fitness)
         if show_progress:
-            print(generation[0])
+            print(generation[0][1])
     return np.array(best_fitnesses)
