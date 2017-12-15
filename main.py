@@ -13,4 +13,4 @@ if __name__ == '__main__':
         output_filename = sys.argv[3]
         best_fitnesses = optimize_local.calc(int(sys.argv[2]), int(sys.argv[4]), sys.argv[5])
         with open(output_filename, 'wt') as fout:
-            fout.write('\n'.join(map(lambda x: ' '.join(x), best_fitnesses)))
+            fout.write('\n'.join(map(lambda fit: ' '.join([str(i) for i in fit]), best_fitnesses)))

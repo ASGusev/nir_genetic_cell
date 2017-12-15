@@ -14,16 +14,18 @@ EPS = 1e-12
 TRACK_SIZE = 50
 MAX_DIST = 1e-6
 DELTA_T = 1.8 * 1e-6  # 1.89 sec
-PART_CNT = 50
+PART_CNT = 100
 kB = 1.38e-23
 T = 293
-GEN_SIZE = 100
+GEN_SIZE = 160
 REPLACED_SHARE = 0.2
 TO_REPLACE = int(GEN_SIZE * REPLACED_SHARE + EPS)
 TO_KEEP = GEN_SIZE - TO_REPLACE
 BOXES_ALONG = 12
 BOX_SIDE = 2 * MAX_DIST / BOXES_ALONG
 COORD_MULT = 1 / BOX_SIDE
+MSD_MAX_TIME = 10
+MSD_TIMES = np.arange(1, MSD_MAX_TIME + 1)
 
 
 def drive_particles(viscs, steps, radius, particles_number):
@@ -80,34 +82,29 @@ def target_f(x, a, b):
 
 def track_to_params(track):
     time_disps = []
-    times = np.arange(1, len(track))
-    for i in times:
-        displacements = np.linalg.norm(track[i:] - track[:-i], axis=1)
+    for i in MSD_TIMES:
+        displacements = np.sum((track[i:] - track[:-i]) ** 2, axis=1)
         time_disps.append(displacements.mean())
     time_disps = np.array(time_disps)
-    c, _ = soptimize.curve_fit(target_f, times, time_disps, [1e1, 1e-9])
+    c, _ = soptimize.curve_fit(target_f, MSD_TIMES, time_disps, [1e1, 1e-9])
     return c
 
 
 def calc_length_fitness(shifts, length):
     shifts_hor_lengths = np.sqrt(np.sum((shifts ** 2)[:, :, :-1], axis=2))
     track_lengths = np.sum(shifts_hor_lengths, axis=1)
-    length_ratios = track_lengths / length
-    exp_fitnesses = (length_ratios - 1) ** 2
+    exp_fitnesses = (track_lengths - length) ** 2
     return exp_fitnesses.mean()
 
 
 def calc_param_fitness(tracks, disp_params):
     time_disps = []
-    times = np.arange(1, tracks.shape[1])
-    for i in times:
-        displacements = np.linalg.norm(tracks[:, i:, :] - tracks[:, :-i, :], axis=2)
+    for i in MSD_TIMES:
+        displacements = np.sum((tracks[:, i:, :2] - tracks[:, :-i, :2]) ** 2, axis=2)
         time_disps.append(displacements.mean())
     time_disps = np.array(time_disps)
-    (p1, p2), _ = soptimize.curve_fit(target_f, times, time_disps, [1e1, 1e-9])
-    p1 = abs(p1 / disp_params[0] - 1)
-    p2 = abs(p2 / disp_params[1] - 1)
-    return p1, p2
+    (p1, p2), _ = soptimize.curve_fit(target_f, MSD_TIMES, time_disps, [1, 1e-9])
+    return (p1 - disp_params[0]) ** 2, (p2 - disp_params[1]) ** 2
 
 
 def prepare_disp_params(data):
@@ -162,7 +159,7 @@ def make_first_gen(fitness_function_calculator):
 
 def normalize(arr):
     avg = arr.mean()
-    while abs(avg) > EPS:
+    while abs(avg) > 1e-3:
         arr = arr - avg
         avg = arr.mean()
     disp = (arr ** 2).mean()
@@ -195,7 +192,7 @@ def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
         if write_step > 0 and (j + 1) % write_step == 0:
             step_writer.write_step(j + 1, generation[0][1], generation[0][0])
 
-        generation = generation[:TO_KEEP] + children(generation,
+        generation = generation[:TO_KEEP] + children(generation[:TO_REPLACE],
                                                      fitness_calculator.calculate_fitness)
         if show_progress:
             print(generation[0][1])
