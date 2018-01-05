@@ -17,7 +17,7 @@ DELTA_T = 1.8 * 1e-6  # 1.89 sec
 PART_CNT = 100
 kB = 1.38e-23
 T = 293
-GEN_SIZE = 160
+GEN_SIZE = 200
 REPLACED_SHARE = 0.2
 TO_REPLACE = int(GEN_SIZE * REPLACED_SHARE + EPS)
 TO_KEEP = GEN_SIZE - TO_REPLACE
@@ -86,7 +86,7 @@ def track_to_params(track):
         displacements = np.sum((track[i:] - track[:-i]) ** 2, axis=1)
         time_disps.append(displacements.mean())
     time_disps = np.array(time_disps)
-    c, _ = soptimize.curve_fit(target_f, MSD_TIMES, time_disps, [1e1, 1e-9])
+    c, _ = soptimize.curve_fit(target_f, MSD_TIMES, time_disps, [1, 1e-9])
     return c
 
 
@@ -151,27 +151,33 @@ def children(parents, fitness_function):
     return list(zip(kids, fitnesses))
 
 
+def dominates(a, b):
+    return all(i < j for i, j in zip(a, b))
+
+
+def pareto_sort(generation):
+    n = len(generation)
+    better = [[] for i in generation]
+    worse = [[] for i in generation]
+    for i in range(n):
+        for j in range(i):
+            a = generation[i][1]
+            b = generation[j][1]
+            if dominates(a, b):
+                better[j].append(i)
+                worse[i].append(j)
+            elif dominates(a, b):
+                better[i].append(j)
+                worse[j].append(i)
+    fitness = [1 + len(i) for i in better]
+    fit_gen = sorted(list(zip(generation, fitness)), key=itemgetter(1))
+    return list(map(itemgetter(0), fit_gen))
+
+
 def make_first_gen(fitness_function_calculator):
     rep = np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG)) * 2.390041077895209e-06
     fitness = fitness_function_calculator(rep)
     return [(rep, fitness) for i in range(GEN_SIZE)]
-
-
-def normalize(arr):
-    avg = arr.mean()
-    while abs(avg) > 1e-3:
-        arr = arr - avg
-        avg = arr.mean()
-    disp = (arr ** 2).mean()
-    if abs(disp) > EPS:
-        arr /= math.sqrt(disp)
-    return arr
-
-
-def sort_generation(generation):
-    cum_func = np.array([i[1] for i in generation]).T
-    keys = np.vstack([normalize(i) for i in cum_func]).T.sum(axis=1)
-    return [i[0] for i in sorted(zip(generation, keys), key=itemgetter(1))]
 
 
 def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
@@ -186,7 +192,8 @@ def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
     for j in range(iterations_number):
         if show_progress:
             print('Iteration {}'.format(j + 1))
-        generation = sort_generation(generation)
+        pareto_sort(generation)
+        generation = pareto_sort(generation)
         best_fitnesses.append(generation[0][1])
 
         if write_step > 0 and (j + 1) % write_step == 0:
