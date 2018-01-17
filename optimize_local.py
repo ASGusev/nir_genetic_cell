@@ -4,7 +4,7 @@ from multiprocessing import Pool
 from data_parser import read_data
 import rw
 import scipy.optimize as soptimize
-import math
+import random
 
 
 type_particle = [('x', float), ('y', float), ('z', float)]
@@ -130,54 +130,109 @@ class FitnessCalculator:
         return length_diff.mean(), params[0].mean(), params[1].mean()
 
 
+def mutate(visc):
+    return visc * np.random.normal(1, 0.02, (BOXES_ALONG, BOXES_ALONG, BOXES_ALONG))
+
+
 def cross(father, mother):
     from_father = np.random.choice((False, True), (BOXES_ALONG, BOXES_ALONG, BOXES_ALONG))
     from_mother = np.logical_not(from_father)
     child = np.zeros((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG))
     child[from_father] = father[from_father]
     child[from_mother] = mother[from_mother]
-    mutations = np.random.normal(1, 0.02, (BOXES_ALONG, BOXES_ALONG, BOXES_ALONG))
-    child *= mutations
-    return child
-
-
-def children(parents, fitness_function):
-    kids = []
-    for father, mother in zip(parents[::2], parents[1::2]):
-        kids.append(cross(father[0], mother[0]))
-        kids.append(cross(father[0], mother[0]))
-    with Pool() as pool:
-        fitnesses = list(pool.map(fitness_function, kids))
-    return list(zip(kids, fitnesses))
+    return mutate(child)
 
 
 def dominates(a, b):
     return all(i < j for i, j in zip(a, b))
 
 
-def pareto_sort(generation):
+def make_fronts(generation):
     n = len(generation)
-    better = [[] for i in generation]
-    worse = [[] for i in generation]
+    dominators = [set() for i in generation]
     for i in range(n):
         for j in range(i):
             a = generation[i][1]
             b = generation[j][1]
             if dominates(a, b):
-                better[j].append(i)
-                worse[i].append(j)
+                dominators[j].add(i)
             elif dominates(a, b):
-                better[i].append(j)
-                worse[j].append(i)
-    fitness = [1 + len(i) for i in better]
-    fit_gen = sorted(list(zip(generation, fitness)), key=itemgetter(1))
-    return list(map(itemgetter(0), fit_gen))
+                dominators[i].add(j)
+    fronts = []
+    used = set()
+    while True:
+        new_front = set(filter(lambda x: len(dominators[x]) == 0 and x not in used, list(range(n))))
+        if len(new_front) == 0:
+            break
+        front_set = set(new_front)
+        used.update(front_set)
+        for doms in dominators:
+            doms.difference_update(front_set)
+        new_front = [generation[i] for i in new_front]
+        fronts.append(new_front)
+    return fronts
+
+
+def crowding_distance_sort(fronts):
+    def sort_front(f):
+        front = [i + ([float('inf'), float('inf'), float('inf')],) for i in f]
+        n = len(front)
+        for obj_id in range(3):
+            front = sorted(front, key=lambda x: x[1][obj_id])
+            diapason = front[n - 1][1][obj_id] - front[0][1][obj_id]
+            for i in range(1, n - 1):
+                front[i][2][obj_id] = (front[i + 1][1][obj_id] - front[i - 1][1][obj_id]) / diapason
+        front = [(visc, fitness, sum(cds)) for visc, fitness, cds in front]
+        return sorted(front, key=itemgetter(2))
+
+    return [sort_front(f) for f in fronts]
 
 
 def make_first_gen(fitness_function_calculator):
-    rep = np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG)) * 2.390041077895209e-06
-    fitness = fitness_function_calculator(rep)
-    return [(rep, fitness) for i in range(GEN_SIZE)]
+    ref = np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG)) * 2.390041077895209e-06
+    first_gen = [mutate(ref) for i in range(GEN_SIZE)]
+    with Pool() as pool:
+        fitness = pool.map(fitness_function_calculator, first_gen)
+    first_gen = list(zip(first_gen, fitness))
+    first_gen = make_fronts(first_gen)
+    return crowding_distance_sort(first_gen)
+
+
+def cut_gen(new_gen):
+    i = 0
+    rest = GEN_SIZE
+    while rest > 0:
+        if len(new_gen[i]) > rest:
+            new_gen[i] = new_gen[i][:rest]
+        rest -= len(new_gen[i])
+        i += 1
+    new_gen = new_gen[:i]
+    return new_gen
+
+
+def update_generation(parent_generation, fitness_calculator):
+    parents = []
+    for ind, front in enumerate(parent_generation):
+        parents.extend([(visc, fitness, crowding_dist, ind)
+                        for visc, fitness, crowding_dist in front])
+
+    def choose_parent():
+        candidate_1, candidate_2 = random.choice(parents), random.choice(parents)
+        if candidate_1[3] == candidate_2[3] and candidate_1[2] > candidate_2[2] \
+                or candidate_1[3] < candidate_2[3]:
+            return candidate_1
+        return candidate_2
+
+    kids = []
+    for i in range(TO_REPLACE):
+        kids.append(cross(choose_parent()[0], choose_parent()[0]))
+    with Pool() as pool:
+        kid_fitnesses = pool.map(fitness_calculator, kids)
+    kids = list(zip(kids, kid_fitnesses))
+    parents = [(visc, fitness) for visc, fitness, _, _ in parents]
+    new_gen = make_fronts(parents + kids)
+    new_gen = crowding_distance_sort(new_gen)
+    return cut_gen(new_gen)
 
 
 def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
@@ -189,18 +244,17 @@ def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
     if show_progress:
         print('Preparing first generation')
     generation = make_first_gen(fitness_calculator.calculate_fitness)
+
     for j in range(iterations_number):
         if show_progress:
             print('Iteration {}'.format(j + 1))
-        pareto_sort(generation)
-        generation = pareto_sort(generation)
-        best_fitnesses.append(generation[0][1])
+        best_fitnesses.append([i for _, i, _ in generation[0]])
+
+        generation = update_generation(generation, fitness_calculator.calculate_fitness)
 
         if write_step > 0 and (j + 1) % write_step == 0:
             step_writer.write_step(j + 1, generation[0][1], generation[0][0])
 
-        generation = generation[:TO_KEEP] + children(generation[:TO_REPLACE],
-                                                     fitness_calculator.calculate_fitness)
         if show_progress:
-            print(generation[0][1])
+            print(generation[0][0][1])
     return np.array(best_fitnesses)
