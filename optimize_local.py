@@ -188,7 +188,7 @@ def crowding_distance_sort(fronts):
     return [sort_front(f) for f in fronts]
 
 
-def make_first_gen(fitness_function_calculator):
+def create_initial_population(fitness_function_calculator):
     ref = np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG)) * 2.390041077895209e-06
     first_gen = [mutate(ref) for i in range(GEN_SIZE)]
     with Pool() as pool:
@@ -235,26 +235,26 @@ def update_generation(parent_generation, fitness_calculator):
     return cut_gen(new_gen)
 
 
-def calc(iterations_number, write_step, raw_filename=None, show_progress=True):
+def run(initial_population, iterations_number, write_step, final_population_filename=None,
+        raw_filename=None, iterations_before=0, show_progress=True):
     fitness_calculator = FitnessCalculator(read_data())
     best_fitnesses = []
     if write_step > 0:
-        step_writer = rw.StepWriter(raw_filename)
+        step_writer = rw.StepWriter(raw_filename, iterations_before == 0)
 
-    if show_progress:
-        print('Preparing first generation')
-    generation = make_first_gen(fitness_calculator.calculate_fitness)
-
+    population = initial_population
     for j in range(iterations_number):
         if show_progress:
             print('Iteration {}'.format(j + 1))
-        best_fitnesses.append([i for _, i, _ in generation[0]])
+        best_fitnesses.append([i for _, i, _ in population[0]])
 
-        generation = update_generation(generation, fitness_calculator.calculate_fitness)
+        population = update_generation(population, fitness_calculator.calculate_fitness)
 
         if write_step > 0 and (j + 1) % write_step == 0:
-            step_writer.write_step(j + 1, generation[0][1], generation[0][0])
-
-        if show_progress:
-            print(generation[0][0][1])
+            step_writer.write_step(j + 1, population[0][1], population[0][0])
+    if final_population_filename is not None:
+        final_population = []
+        for front in population:
+            final_population.extend(front)
+        rw.write_population(final_population, iterations_before + iterations_number, final_population_filename)
     return np.array(best_fitnesses)
