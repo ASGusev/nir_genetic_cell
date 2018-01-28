@@ -2,10 +2,11 @@ import numpy as np
 
 
 class StepWriter:
-    def __init__(self, filename):
+    def __init__(self, filename, clear):
         self.filename = filename
-        self.output_file = open(filename, 'wt')
-        self.output_file.close()
+        if clear:
+            self.output_file = open(filename, 'wt')
+            self.output_file.close()
 
     def write_step(self, step, fitness, densities):
         with open(self.filename, 'at') as fout:
@@ -41,6 +42,17 @@ def read_steps(filename):
             if step is None:
                 raise StopIteration
             yield step
+
+
+def write_population(population, filename):
+    with open(filename, 'wt') as fout:
+        for elem in population:
+            fout.write('begin\n')
+            fout.write(' '.join(map(str, elem[1])))
+            fout.write('\n')
+            for line in elem[0]:
+                fout.write('\t'.join([' '.join(map(str, column)) for column in line]) + '\n')
+            fout.write('end\n')
 
 
 __all__ = ['read_steps', 'StepWriter']
