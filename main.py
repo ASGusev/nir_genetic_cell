@@ -12,6 +12,8 @@ if __name__ == '__main__':
         iterations_ran = 0
     else:
         initial_population, iterations_ran = rw.read_population(sys.argv[1])
+        initial_population = optimize_local.make_fronts(initial_population)
+        initial_population = optimize_local.crowding_distance_sort(initial_population)
     iterations = int(sys.argv[2])
     output_filename = sys.argv[3]
     if len(sys.argv) > 4:
@@ -27,7 +29,11 @@ if __name__ == '__main__':
 
     best_fitnesses = optimize_local.run(initial_population, iterations, raw_write_period,
                                         final_population_filename, raw_filename, iterations_ran)
-    with open(output_filename, 'wt') as fout:
+    if iterations_ran == 0:
+        fout_params = 'wt'
+    else:
+        fout_params = 'at'
+    with open(output_filename, fout_params) as fout:
             for gen in best_fitnesses:
                 fout.write('\t'.join([' '.join([str(i) for i in fitness]) for fitness in gen]))
                 fout.write('\n')

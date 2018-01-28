@@ -44,8 +44,9 @@ def read_steps(filename):
             yield step
 
 
-def write_population(population, filename):
+def write_population(population, iterations_passed, filename):
     with open(filename, 'wt') as fout:
+        fout.write('{}\n'.format(iterations_passed))
         for elem in population:
             fout.write('begin\n')
             fout.write(' '.join(map(str, elem[1])))
@@ -55,4 +56,29 @@ def write_population(population, filename):
             fout.write('end\n')
 
 
-__all__ = ['read_steps', 'StepWriter']
+def read_element(fin):
+    line = ''
+    while not line.startswith('begin'):
+        line = fin.readline()
+        if line == '':
+            return None
+    fitness = tuple(float(i) for i in fin.readline().split())
+    densities = []
+    while not line.startswith('end'):
+        line = fin.readline()
+        if not line.startswith('end'):
+            cols = line.split('\t')
+            densities.append([[float(i) for i in col.split(' ')] for col in cols])
+    densities = np.array(densities)
+    return densities, fitness
+
+
+def read_population(filename):
+    with open(filename, 'rt') as fin:
+        steps = int(fin.readline())
+        population = []
+        element = read_element(fin)
+        while element is not None:
+            population.append(element)
+            element = read_element(fin)
+    return population, steps
