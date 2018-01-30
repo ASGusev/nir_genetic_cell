@@ -11,7 +11,7 @@ class StepWriter:
     def write_step(self, step, fitness, densities):
         with open(self.filename, 'at') as fout:
             fout.write('begin step {} \n'.format(step))
-            fout.write('fitness: {}\n'.format(fitness))
+            fout.write('fitness: {}\n'.format(' '.join(map(str, fitness))))
             for line in densities:
                 fout.write('\t'.join([' '.join(map(str, column)) for column in line]) + '\n')
             fout.write('end step\n')

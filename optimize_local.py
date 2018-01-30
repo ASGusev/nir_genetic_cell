@@ -17,7 +17,7 @@ DELTA_T = 1.8 * 1e-6  # 1.89 sec
 PART_CNT = 100
 kB = 1.38e-23
 T = 293
-GEN_SIZE = 50
+GEN_SIZE = 200
 REPLACED_SHARE = 0.2
 TO_REPLACE = int(GEN_SIZE * REPLACED_SHARE + EPS)
 TO_KEEP = GEN_SIZE - TO_REPLACE
@@ -103,7 +103,7 @@ def calc_param_fitness(tracks, disp_params):
         displacements = np.sum((tracks[:, i:, :2] - tracks[:, :-i, :2]) ** 2, axis=2)
         time_disps.append(displacements.mean())
     time_disps = np.array(time_disps)
-    (p1, p2), _ = soptimize.curve_fit(target_f, MSD_TIMES, time_disps, [1, 1e-9])
+    (p1, p2), _ = soptimize.curve_fit(target_f, MSD_TIMES, time_disps, [1, 1e-15])
     return (p1 - disp_params[0]) ** 2, (p2 - disp_params[1]) ** 2
 
 
@@ -250,8 +250,8 @@ def run(initial_population, iterations_number, write_step, final_population_file
 
         population = update_generation(population, fitness_calculator.calculate_fitness)
 
-        if write_step > 0 and (j + 1) % write_step == 0:
-            step_writer.write_step(j + 1, population[0][1], population[0][0])
+        if write_step > 0 and (iterations_before + j + 1) % write_step == 0:
+            step_writer.write_step(iterations_before + j + 1, population[0][0][1], population[0][0][0])
     if final_population_filename is not None:
         final_population = []
         for front in population:
