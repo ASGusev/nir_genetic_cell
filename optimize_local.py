@@ -183,7 +183,7 @@ def crowding_distance_sort(fronts):
             for i in range(1, n - 1):
                 front[i][2][obj_id] = (front[i + 1][1][obj_id] - front[i - 1][1][obj_id]) / diapason
         front = [(visc, fitness, sum(cds)) for visc, fitness, cds in front]
-        return sorted(front, key=itemgetter(2))
+        return sorted(front, key=lambda x: -x[2])
 
     return [sort_front(f) for f in fronts]
 
