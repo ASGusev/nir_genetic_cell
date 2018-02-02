@@ -5,6 +5,7 @@ from data_parser import read_data
 import rw
 import scipy.optimize as soptimize
 import random
+import math
 
 
 type_particle = [('x', float), ('y', float), ('z', float)]
@@ -188,12 +189,17 @@ def crowding_distance_sort(fronts):
     return [sort_front(f) for f in fronts]
 
 
-def create_initial_population(fitness_function_calculator):
+def create_population(fitness_function_calculator):
     ref = np.ones((BOXES_ALONG, BOXES_ALONG, BOXES_ALONG)) * 2.390041077895209e-06
     first_gen = [mutate(ref) for i in range(GEN_SIZE)]
     with Pool() as pool:
         fitness = pool.map(fitness_function_calculator, first_gen)
     first_gen = list(zip(first_gen, fitness))
+    return first_gen
+
+
+def create_population_mo(fitness_function_calculator):
+    first_gen = create_population(fitness_function_calculator)
     first_gen = make_fronts(first_gen)
     return crowding_distance_sort(first_gen)
 
@@ -257,4 +263,58 @@ def run(initial_population, iterations_number, write_step, final_population_file
         for front in population:
             final_population.extend(front)
         rw.write_population(final_population, iterations_before + iterations_number, final_population_filename)
+    return np.array(best_fitnesses)
+
+
+def children_so(parents, fitness_function):
+    kids = []
+    for father, mother in zip(parents[::2], parents[1::2]):
+        kids.append(cross(father[0], mother[0]))
+        kids.append(cross(father[0], mother[0]))
+    with Pool() as pool:
+        fitnesses = list(pool.map(fitness_function, kids))
+    return list(zip(kids, fitnesses))
+
+
+def normalize(arr):
+    avg = arr.mean()
+    while abs(avg) > 1e-3:
+        arr = arr - avg
+        avg = arr.mean()
+    disp = (arr ** 2).mean()
+    if abs(disp) > EPS:
+        arr /= math.sqrt(disp)
+    return arr
+
+
+def sort_generation(generation):
+    cum_func = np.array([i[1] for i in generation]).T
+    keys = np.vstack([normalize(i) for i in cum_func]).T.sum(axis=1)
+    return [i[0] for i in sorted(zip(generation, keys), key=itemgetter(1))]
+
+
+def update_generation_so(generation, calculate_fitness):
+    generation = sort_generation(generation)
+    return generation[:TO_KEEP] + children_so(generation[:TO_REPLACE], calculate_fitness)
+
+
+def run_so(initial_population, iterations_number, write_step, final_population_filename=None,
+        raw_filename=None, iterations_before=0, show_progress=True):
+    fitness_calculator = FitnessCalculator(read_data())
+    best_fitnesses = []
+    if write_step > 0:
+        step_writer = rw.StepWriter(raw_filename, iterations_before==0)
+
+    population = initial_population
+    for j in range(iterations_number):
+        if show_progress:
+            print('Iteration {}'.format(j + 1))
+        best_fitnesses.append([i[1] for i in population])
+
+        population = update_generation_so(population, fitness_calculator.calculate_fitness)
+
+        if write_step > 0 and (j + 1) % write_step == 0:
+            step_writer.write_step(j + 1, population[0][1], population[0][0])
+    if final_population_filename is not None:
+        rw.write_population(population, iterations_before + iterations_number, final_population_filename)
     return np.array(best_fitnesses)
