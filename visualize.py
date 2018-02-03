@@ -24,7 +24,7 @@ def plot_map(dens, step_number, fitness, ax, relevant_indexes=None):
         ind0, ind1 = relevant_indexes[0], relevant_indexes[1]
         avg_dens[ind0, ind1] = np.average(dens, axis=2)[ind0, ind1]
     ax.imshow(avg_dens, cmap='Greys')
-    ax.set_title('Step {}, fitness: {}'.format(step_number, fitness))
+    ax.set_title('Step {}, fitness: {}'.format(step_number, str(fitness)))
 
 
 def main(input_filename, output_filename, circle=False):
