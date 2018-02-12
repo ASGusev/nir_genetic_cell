@@ -148,13 +148,13 @@ def dominates(a, b):
     return all(i < j for i, j in zip(a, b))
 
 
-def make_fronts(generation):
-    n = len(generation)
-    dominators = [set() for i in generation]
+def make_fronts(population):
+    n = len(population)
+    dominators = [set() for i in population]
     for i in range(n):
         for j in range(i):
-            a = generation[i][1]
-            b = generation[j][1]
+            a = population[i][1]
+            b = population[j][1]
             if dominates(a, b):
                 dominators[j].add(i)
             elif dominates(a, b):
@@ -169,7 +169,7 @@ def make_fronts(generation):
         used.update(front_set)
         for doms in dominators:
             doms.difference_update(front_set)
-        new_front = [generation[i] for i in new_front]
+        new_front = [population[i] for i in new_front]
         fronts.append(new_front)
     return fronts
 
@@ -196,12 +196,6 @@ def create_population(fitness_function_calculator):
         fitness = pool.map(fitness_function_calculator, first_gen)
     first_gen = list(zip(first_gen, fitness))
     return first_gen
-
-
-def create_population_mo(fitness_function_calculator):
-    first_gen = create_population(fitness_function_calculator)
-    first_gen = make_fronts(first_gen)
-    return crowding_distance_sort(first_gen)
 
 
 def cut_gen(new_gen):
