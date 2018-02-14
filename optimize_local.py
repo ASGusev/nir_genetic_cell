@@ -307,8 +307,8 @@ def run_so(initial_population, iterations_number, write_step, final_population_f
 
         population = update_generation_so(population, fitness_calculator.calculate_fitness)
 
-        if write_step > 0 and (j + 1) % write_step == 0:
-            step_writer.write_step(j + 1, population[0][1], population[0][0])
+        if write_step > 0 and (iterations_before + j + 1) % write_step == 0:
+            step_writer.write_step(iterations_before + j + 1, population[0][1], population[0][0])
     if final_population_filename is not None:
         rw.write_population(population, iterations_before + iterations_number, final_population_filename)
     return np.array(best_fitnesses)
