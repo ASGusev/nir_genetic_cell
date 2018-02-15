@@ -24,6 +24,8 @@ with open(data_file, 'rt') as fin:
 mins = np.array(mins).T
 fig = plt.figure(figsize=(N * 5, 5))
 
+print(' '.join(str(i) for i in  mins.min(axis=1)))
+
 plot_func(mins[0], 1, 'Length fitness')
 plot_func(mins[1], 2, 'Grade')
 plot_func(mins[2], 3, 'Coefficient')
