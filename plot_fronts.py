@@ -11,10 +11,11 @@ def parse_front(front):
 def sort_front(front):
     front = sorted(front, key=operator.itemgetter(0))
     res = []
-    res.append(front[0])
-    for i in range(1, len(front)):
-        if front[i][2] < res[len(res) - 1][2]:
-            res.append(front[i])
+    best_yet = float('inf')
+    for fitness in front:
+        if fitness[2] < best_yet:
+            res.append(fitness)
+            best_yet = fitness[2]
     return res
 
 
