@@ -23,7 +23,11 @@ input_filename = sys.argv[1]
 output_filename = sys.argv[2]
 with open(input_filename, 'rt') as fin:
     read_fronts = [parse_front(front) for front in fin.readlines()]
-fronts = [sort_front(read_fronts[i]) for i in range(0, len(read_fronts), 200)]
-for front in fronts:
-    plt.plot([i[0] for i in front], [i[2] for i in front], 'o', markersize=3)
+fronts = [(i, sort_front(read_fronts[i])) for i in range(0, len(read_fronts), 200)]
+for number, front in fronts:
+    plt.plot([i[0] for i in front], [i[2] for i in front], 'o', markersize=3,
+             label='Generation {}'.format(number + 1))
+plt.xlabel('Length fitness function')
+plt.ylabel('Approximation coefficient fitness function')
+plt.legend()
 plt.savefig(output_filename)
